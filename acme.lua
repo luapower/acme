@@ -7,7 +7,7 @@
 local http = require'http'
 local cjson = require'cjson'
 local openssl = 'openssl'
-local b64 = require'libb64'
+local b64 = require'base64'
 local sha2 = require'sha2'
 local json = cjson.new()
 
