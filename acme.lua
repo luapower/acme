@@ -14,29 +14,15 @@ local json = cjson.new()
 -- some implemntations like ZeroSSL doesn't like / to be escaped
 json.encode_escape_forward_slash(false)
 
--- https://tools.ietf.org/html/rfc8555 Page 10
--- Binary fields in the JSON objects used by acme are encoded using
--- base64url encoding described in Section 5 of [RFC4648] according to
--- the profile specified in JSON Web Signature in Section 2 of
--- [RFC7515].  This encoding uses a URL safe character set.  Trailing
--- '=' characters MUST be stripped.  Encoded values that include
--- trailing '=' characters MUST be rejected as improperly encoded.
-local function encode_base64url(s)
-	return b64.encode(s):gsub('/', '_'):gsub('+', '-'):gsub('=*$', '')
-end
-local function decode_base64url(s)
-	return b64.decode(s):gsub('_', '/'):gsub('-', '+'):gsub('=*$', '')
-end
-
 -- https://tools.ietf.org/html/rfc7638
 local function thumbprint(pkey)
 	local params = assert(pkey:get_parameters())
 	local jwk_ordered = string.format('{"e":"%s","kty":"RSA","n":"%s"}',
-		encode_base64url(params.e:to_binary()),
-		encode_base64url(params.n:to_binary())
+		b64.urlencode(params.e:to_binary()),
+		b64.urlencode(params.n:to_binary())
 	)
 	local hash = sha2.sha256(jwk_ordered)
-	return encode_base64url(hash)
+	return b64.urlencode(hash)
 end
 
 local function create_csr(domain_pkey, ...)
@@ -124,7 +110,7 @@ acme.challenge_start_callback = nil -- callback function that allows to wait bef
 function acme.new(t)
 	local self = setmetatable(t or {}, {__index = acme})
 	self.eab_required = false --CA requires external account binding or not
-	self.eab_hmac_key = decode_base64url(self.eab_hmac_key)
+	self.eab_hmac_key = b64.urldecode(self.eab_hmac_key)
 	self.challenge_handlers = {}
 	if self.account_key then
 		self.account_pkey = openssl.pkey.new(self.account_key)
@@ -233,9 +219,9 @@ function acme:jws(url, payload, nonce)
 		end
 
 		jws.protected.jwk = {
-			e = encode_base64url(params.e:to_binary()),
+			e = b64.urlencode(params.e:to_binary()),
 			kty = 'RSA',
-			n = encode_base64url(params.n:to_binary())
+			n = b64.urlencode(params.n:to_binary())
 		}
 
 		if self.eab_required then
@@ -250,11 +236,11 @@ function acme:jws(url, payload, nonce)
 
 			log(ngx_DEBUG, 'eab jws payload: ', json.encode(eab_jws))
 
-			eab_jws.protected = encode_base64url(json.encode(eab_jws.protected))
-			eab_jws.payload = encode_base64url(json.encode(eab_jws.payload))
+			eab_jws.protected = b64.urlencode(json.encode(eab_jws.protected))
+			eab_jws.payload = b64.urlencode(json.encode(eab_jws.payload))
 			local hmac = openssl.hmac.new(self.eab_hmac_key, 'SHA256')
 			local sig = hmac:final(eab_jws.protected .. '.' .. eab_jws.payload)
-			eab_jws.signature = encode_base64url(sig)
+			eab_jws.signature = b64.urlencode(sig)
 
 			payload['externalAccountBinding'] = eab_jws
 		end
@@ -266,13 +252,13 @@ function acme:jws(url, payload, nonce)
 
 	log(ngx_DEBUG, 'jws payload: ', json.encode(jws))
 
-	jws.protected = encode_base64url(json.encode(jws.protected))
+	jws.protected = b64.urlencode(json.encode(jws.protected))
 	-- if payload is not set, we are doing a POST-as-GET (https://tools.ietf.org/html/rfc8555#section-6.3)
 	-- set it to empty string
-	jws.payload = payload and encode_base64url(json.encode(payload)) or ''
+	jws.payload = payload and b64.urlencode(json.encode(payload)) or ''
 	local digest = openssl.digest.new('SHA256')
 	digest:update(jws.protected .. '.' .. jws.payload)
-	jws.signature = encode_base64url(self.account_pkey:sign(digest))
+	jws.signature = b64.urlencode(self.account_pkey:sign(digest))
 
 	return json.encode(jws)
 end
@@ -351,7 +337,7 @@ function acme:new_account()
 			return nil, 'eab_handler returned an error: ' .. err
 		end
 		self.eab_kid = eab_kid
-		self.eab_hmac_key = decode_base64url(eab_hmac_key)
+		self.eab_hmac_key = b64.urldecode(eab_hmac_key)
 	end
 
 	local _, headers, err = self:post(self.directory['newAccount'], payload)
@@ -471,7 +457,7 @@ end
 
 function acme:finalize(finalize_url, order_url, csr)
 	local payload = {
-		csr = encode_base64url(csr)
+		csr = b64.urlencode(csr)
 	}
 
 	local res, headers, err = self:post(finalize_url, payload)
