@@ -11,8 +11,10 @@ local b64 = require'base64'
 local sha2 = require'sha2'
 local json = cjson.new()
 
+local acme = {}
+
 -- some implemntations like ZeroSSL doesn't like / to be escaped
-json.encode_escape_forward_slash(false)
+--TODO: json.encode_escape_forward_slash(false)
 
 -- https://tools.ietf.org/html/rfc7638
 local function thumbprint(pkey)
@@ -27,7 +29,7 @@ end
 
 local function create_csr(domain_pkey, ...)
 	local subject = openssl.name.new()
-	local assert(subject:add('CN', (...)))
+	assert(subject:add('CN', (...)))
 	-- add subject name to altname as well, some implementaions
 	-- like ZeroSSL requires that
 	local alt
@@ -84,7 +86,7 @@ end
 
 function acme:serve_challenge(uri)
 	local captures, err =
-		ngx.re.match(ngx.var.request_uri, [[\.well-known/]] .. 'acme-challenge/(.+)", "jo")
+		ngx.re.match(ngx.var.request_uri, [[\.well-known/]] .. 'acme-challenge/(.+)', 'jo')
 	local token = captures[1]
 	log(ngx.DEBUG, "token is ", token)
 	local value, err = self.storage:get(ch_key(token))
@@ -440,7 +442,7 @@ local function watch_order_status(self, order_url, target)
 end
 
 
-local rel_alternate_pattern = '<(.+)>;%s*rel='alternate''
+local rel_alternate_pattern = '<(.+)>;%s*rel="alternate"'
 local function parse_alternate_link(headers)
 	local link_header = headers['Link']
 	if type(link_header) == 'string' then
